@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "python-xero-minimal"
+version = "0.1.0"
+description = "Minimal example showing how to access the Xero API"
+authors = ["Stephen Early <steve@assorted.org.uk>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+requests-oauthlib = "^1.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[tool.poetry.scripts]
+xero-demo = "xero:demo"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
