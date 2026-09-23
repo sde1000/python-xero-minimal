@@ -11,12 +11,6 @@ import json
 import requests
 
 
-# Zap the very unhelpful behaviour from oauthlib when Xero returns
-# more scopes than requested
-import os
-os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = "true"
-
-
 XERO_ENDPOINT_URL = "https://api.xero.com/api.xro/2.0/"
 XERO_AUTHORIZE_URL = "https://login.xero.com/identity/connect/authorize"
 XERO_CONNECT_URL = "https://identity.xero.com/connect/token"
@@ -45,7 +39,7 @@ class PKCE(WebApplicationClient):
             *args, code_verifier=self.code_verifier, **kwargs)
 
 
-def connection_ok(state):
+def connection_ok(scopes, state):
     if "client_id" not in state:
         return False
     if "redirect_uri" not in state:
@@ -55,7 +49,7 @@ def connection_ok(state):
     if "tenant_id" not in state:
         return False
 
-    session = xero_session(state, omit_tenant=True)
+    session = xero_session(scopes, state, omit_tenant=True)
     try:
         r = session.get(XERO_CONNECTIONS_URL)
     except InvalidGrantError:
@@ -69,7 +63,7 @@ def connection_ok(state):
     return False
 
 
-def xero_session(state, omit_tenant=False):
+def xero_session(scopes, state, omit_tenant=False):
     kwargs = {}
 
     def token_updater(token):
@@ -86,8 +80,7 @@ def xero_session(state, omit_tenant=False):
         state["client_id"],
         client=PKCE(state["client_id"]),
         redirect_uri=state["redirect_uri"],
-        scope=["offline_access", "accounting.transactions",
-               "accounting.contacts", "accounting.settings"],
+        scope=scopes,
         **kwargs)
 
     if not omit_tenant:
@@ -99,13 +92,13 @@ def xero_session(state, omit_tenant=False):
     return session
 
 
-def connect(state):
+def connect(scopes, state):
     if "client_id" not in state:
         state["client_id"] = input("Client ID: ")
     if "redirect_uri" not in state:
         state["redirect_uri"] = input("Redirect URI: ")
 
-    session = xero_session(state, omit_tenant=True)
+    session = xero_session(scopes, state, omit_tenant=True)
     auth_url, auth_state = session.authorization_url(XERO_AUTHORIZE_URL)
 
     print(f"Visit this page in your browser:\n{auth_url}\n")
@@ -132,8 +125,8 @@ def connect(state):
     state["tenant_id"] = connections[int(num)]['tenantId']
 
 
-def disconnect(state):
-    xero = xero_session(state, omit_tenant=True)
+def disconnect(scopes, state):
+    xero = xero_session(scopes, state, omit_tenant=True)
     r = requests.post(XERO_REVOKE_URL, auth=(state["client_id"], ""),
                       data={'token': xero.token['refresh_token']})
     if r.status_code == 200:
@@ -182,6 +175,8 @@ def demo():
     parser.add_argument('--statefile', type=pathlib.Path,
                         default=pathlib.Path("xerostate.json"))
     parser.add_argument('--disconnect', action="store_true")
+    parser.add_argument('--extra-scope', action="append", default=[
+        "offline_access", "accounting.settings.read"], dest="scopes")
 
     args = parser.parse_args()
 
@@ -192,15 +187,15 @@ def demo():
         state = {}
 
     try:
-        if not connection_ok(state):
-            connect(state)
+        if not connection_ok(args.scopes, state):
+            connect(args.scopes, state)
 
-        session = xero_session(state)
+        session = xero_session(args.scopes, state)
 
         print_organisation_details(session)
 
         if args.disconnect:
-            disconnect(state)
+            disconnect(args.scopes, state)
 
     finally:
         with open(args.statefile, 'w') as f:
