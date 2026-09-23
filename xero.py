@@ -18,27 +18,6 @@ XERO_REVOKE_URL = "https://identity.xero.com/connect/revocation"
 XERO_CONNECTIONS_URL = "https://api.xero.com/connections"
 
 
-class PKCE(WebApplicationClient):
-    """Proof Key for Code Exchange by OAuth Public Clients - RFC7636
-    """
-    @staticmethod
-    def _b64encode_without_padding(b):
-        return base64.urlsafe_b64encode(b).split(b'=')[0]
-
-    def prepare_request_uri(self, *args, **kwargs):
-        self.code_verifier = self._b64encode_without_padding(
-            secrets.token_bytes(32))
-        code_challenge = self._b64encode_without_padding(
-            hashlib.sha256(self.code_verifier).digest())
-        return super().prepare_request_uri(
-            *args, code_challenge=code_challenge,
-            code_challenge_method="S256", **kwargs)
-
-    def prepare_request_body(self, *args, **kwargs):
-        return super().prepare_request_body(
-            *args, code_verifier=self.code_verifier, **kwargs)
-
-
 def connection_ok(scopes, state):
     if "client_id" not in state:
         return False
@@ -78,7 +57,7 @@ def xero_session(scopes, state, omit_tenant=False):
 
     session = OAuth2Session(
         state["client_id"],
-        client=PKCE(state["client_id"]),
+        pkce="S256",
         redirect_uri=state["redirect_uri"],
         scope=scopes,
         **kwargs)
